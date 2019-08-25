@@ -1,7 +1,10 @@
 module.exports = {
 	globals: {
 		'ts-jest': {
-			tsConfig: 'tsconfig.jest.json'
+			tsConfig: 'tsconfig.jest.json',
+			diagnostics: {
+				ignoreCodes: ['TS2571']
+			}
 		}
 	},
 	moduleFileExtensions: [
@@ -24,7 +27,7 @@ module.exports = {
 	coverageThreshold: {
 		global: {
 			statements: 81,
-			branches: 75,
+			branches: 74,
 			functions: 82,
 			lines: 83,
 		}
