@@ -23,7 +23,8 @@ var ThreadedClassManagerClass = /** @class */ (function () {
         return this._internal.getChildrenCount();
     };
     ThreadedClassManagerClass.prototype.onEvent = function (proxy, event, cb) {
-        this._internal.on(event, function (child) {
+        var _this = this;
+        var onEvent = function (child) {
             var foundChild = Object.keys(child.instances).find(function (instanceId) {
                 var instance = child.instances[instanceId];
                 return instance.proxy === proxy;
@@ -31,7 +32,13 @@ var ThreadedClassManagerClass = /** @class */ (function () {
             if (foundChild) {
                 cb();
             }
-        });
+        };
+        this._internal.on(event, onEvent);
+        return {
+            stop: function () {
+                _this._internal.removeListener(event, onEvent);
+            }
+        };
     };
     /**
      * Restart the thread of the proxy instance
@@ -65,6 +72,10 @@ var ThreadedClassManagerClass = /** @class */ (function () {
     return ThreadedClassManagerClass;
 }());
 exports.ThreadedClassManagerClass = ThreadedClassManagerClass;
+function childName(child) {
+    return "Child_ " + Object.keys(child.instances).join(',');
+}
+exports.childName = childName;
 var ThreadedClassManagerClassInternal = /** @class */ (function (_super) {
     tslib_1.__extends(ThreadedClassManagerClassInternal, _super);
     function ThreadedClassManagerClassInternal() {
@@ -120,7 +131,7 @@ var ThreadedClassManagerClassInternal = /** @class */ (function (_super) {
      */
     ThreadedClassManagerClassInternal.prototype.attachInstance = function (config, child, proxy, pathToModule, className, classFunction, constructorArgs, onMessage) {
         var instance = {
-            id: 'instance_' + this._instanceId++,
+            id: 'instance_' + this._instanceId++ + (config.instanceName ? '_' + config.instanceName : ''),
             child: child,
             proxy: proxy,
             usage: config.threadUsage,
@@ -186,25 +197,25 @@ var ThreadedClassManagerClassInternal = /** @class */ (function (_super) {
     ThreadedClassManagerClassInternal.prototype.sendMessageToChild = function (instance, messageConstr, cb) {
         try {
             if (!instance.child)
-                throw new Error('Instance has been detached from child process');
+                throw new Error("Instance " + instance.id + " has been detached from child process");
             if (!instance.child.alive)
-                throw new Error('Child process has been closed');
+                throw new Error("Child process of instance " + instance.id + " has been closed");
             if (instance.child.isClosing)
-                throw new Error('Child process is closing');
+                throw new Error("Child process of instance " + instance.id + " is closing");
             var message_1 = tslib_1.__assign({}, messageConstr, {
                 cmdId: instance.child.cmdId++,
                 instanceId: instance.id
             });
             if (message_1.cmd !== internalApi_1.MessageType.INIT &&
                 !instance.initialized)
-                throw Error('Child instance is not initialized');
+                throw Error("Child instance " + instance.id + " is not initialized");
             if (cb)
                 instance.child.queue[message_1.cmdId + ''] = cb;
             try {
                 instance.child.process.send(message_1, function (error) {
                     if (error) {
                         if (instance.child.queue[message_1.cmdId + '']) {
-                            instance.child.queue[message_1.cmdId + ''](instance, new Error('Error sending message to child process: ' + error));
+                            instance.child.queue[message_1.cmdId + ''](instance, new Error("Error sending message to child process of instance " + instance.id + ": " + error));
                             delete instance.child.queue[message_1.cmdId + ''];
                         }
                     }
@@ -212,7 +223,7 @@ var ThreadedClassManagerClassInternal = /** @class */ (function (_super) {
             }
             catch (e) {
                 if ((e.toString() || '').match(/circular structure/)) { // TypeError: Converting circular structure to JSON
-                    throw new Error('Unsupported attribute (circular structure): ' + e.toString());
+                    throw new Error("Unsupported attribute (circular structure) in instance " + instance.id + ": " + e.toString());
                 }
                 else {
                     throw e;
@@ -261,9 +272,9 @@ var ThreadedClassManagerClassInternal = /** @class */ (function (_super) {
                             return false;
                         });
                         if (!foundChild)
-                            throw Error('Child not found');
+                            throw Error("Child of proxy not found");
                         if (!foundInstance)
-                            throw Error('Instance not found');
+                            throw Error("Instance of proxy not found");
                         return [4 /*yield*/, this.restartChild(foundChild, [foundInstance], forceRestart)];
                     case 1:
                         _a.sent();
@@ -379,7 +390,7 @@ var ThreadedClassManagerClassInternal = /** @class */ (function (_super) {
                         instance.child.alive &&
                         !instance.child.isClosing) {
                         // console.log(`Ping failed for Child "${instance.child.id }" of instance "${instance.id}"`)
-                        _this._childHasCrashed(instance.child, 'Child process ping timeout');
+                        _this._childHasCrashed(instance.child, "Child process of instance " + instance.id + " ping timeout");
                     }
                 });
             }
@@ -510,15 +521,15 @@ var ThreadedClassManagerClassInternal = /** @class */ (function (_super) {
             if (child.alive) {
                 child.alive = false;
                 _this.emit('thread_closed', child);
-                _this._childHasCrashed(child, 'Child process closed');
+                _this._childHasCrashed(child, "Child process \"" + childName(child) + "\" was closed");
             }
         });
         child.process.on('error', function (err) {
-            console.log('Error from ' + child.id, err);
+            console.error('Error from child ' + child.id, err);
         });
         child.process.on('message', function (message) {
             if (message.cmd === internalApi_1.MessageType.LOG) {
-                console.log.apply(console, message.log);
+                console.log.apply(console, [message.instanceId].concat(message.log));
             }
             else {
                 var instance = child.instances[message.instanceId];
@@ -527,13 +538,13 @@ var ThreadedClassManagerClassInternal = /** @class */ (function (_super) {
                         instance.onMessageCallback(instance, message);
                     }
                     catch (e) {
-                        console.log('Error in onMessageCallback', message, instance);
-                        console.log(e);
+                        console.error("Error in onMessageCallback in instance " + instance.id, message, instance);
+                        console.error(e);
                         throw e;
                     }
                 }
                 else {
-                    console.log("Instance \"" + message.instanceId + "\" not found");
+                    console.error("Instance \"" + message.instanceId + "\" not found");
                 }
             }
         });

@@ -13,12 +13,10 @@ var lib_1 = require("./lib");
  */
 function threadedClass(orgModule, orgClass, constructorArgs, config) {
     if (config === void 0) { config = {}; }
-    // @ts-ignore expression is allways false
-    // if (typeof orgClass !== 'function') throw Error('argument 2 must be a class!')
     var orgClassName = orgClass.name;
     if (lib_1.isBrowser()) {
         if (!config.pathToWorker) {
-            throw Error('config.pathToWorker is required in brower');
+            throw Error('config.pathToWorker is required in browser');
         }
         if (!lib_1.browserSupportsWebWorkers()) {
             console.log('Web-workers not supported, disabling multi-threading');
@@ -122,7 +120,7 @@ function threadedClass(orgModule, orgClass, constructorArgs, config) {
                     }
                 }
                 else
-                    throw Error('callback "' + msg_1.callbackId + '" not found');
+                    throw Error("callback \"" + msg_1.callbackId + "\" not found in instance " + m.instanceId);
             }
         }
         try {
@@ -157,7 +155,7 @@ function threadedClass(orgModule, orgClass, constructorArgs, config) {
                 else {
                     props.forEach(function (p) {
                         if (!instance.child.alive)
-                            throw Error('Child process has been closed');
+                            throw Error("Child process of instance " + instance.id + " has been closed");
                         if (proxy_1.hasOwnProperty(p.key)) {
                             return;
                         }
@@ -169,10 +167,10 @@ function threadedClass(orgModule, orgClass, constructorArgs, config) {
                                     args[_i] = arguments[_i];
                                 }
                                 if (!instance.child)
-                                    return Promise.reject(new Error('Instance has been detached from child process'));
+                                    return Promise.reject(new Error("Instance " + instance.id + " has been detached from child process"));
                                 return manager_1.ThreadedClassManagerInternal.doMethod(instance.child, function (resolve, reject) {
                                     if (!instance.child)
-                                        throw new Error('Instance has been detached from child process');
+                                        throw new Error("Instance " + instance.id + " has been detached from child process");
                                     // Go through arguments and serialize them:
                                     var encodedArgs = internalApi_1.encodeArguments(instance, instance.child.callbacks, args, !!config.disableMultithreading);
                                     sendFcn(instance, p.key, encodedArgs, function (_instance, err, encodedResult) {

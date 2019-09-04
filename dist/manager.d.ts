@@ -10,7 +10,9 @@ export declare class ThreadedClassManagerClass {
     destroy(proxy: ThreadedClass<any>): Promise<void>;
     destroyAll(): Promise<void>;
     getThreadCount(): number;
-    onEvent(proxy: ThreadedClass<any>, event: string, cb: Function): void;
+    onEvent(proxy: ThreadedClass<any>, event: string, cb: Function): {
+        stop: () => void;
+    };
     /**
      * Restart the thread of the proxy instance
      * @param proxy
@@ -52,6 +54,7 @@ export interface Child {
         [key: string]: Function;
     };
 }
+export declare function childName(child: Child): string;
 /**
  * The ChildInstance represents a proxy-instance of a class, running in a child process
  */

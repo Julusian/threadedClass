@@ -150,7 +150,7 @@ var Worker = /** @class */ (function () {
                                 resolve(oReq.response);
                             }
                             else {
-                                reject(Error('Bad reply from ' + msg_1.modulePath));
+                                reject(Error("Bad reply from " + msg_1.modulePath + " in instance " + handle.id));
                             }
                         };
                         oReq.send();
@@ -273,7 +273,7 @@ var Worker = /** @class */ (function () {
                 var msg = m;
                 var cb = handle.queue[msg.replyTo + ''];
                 if (!cb)
-                    throw Error('cmdId "' + msg.cmdId + '" not found!');
+                    throw Error("cmdId \"" + msg.cmdId + "\" not found in instance " + m.instanceId + "!");
                 if (msg.error) {
                     cb(msg.error);
                 }
@@ -294,7 +294,8 @@ var Worker = /** @class */ (function () {
                     _this.reply(handle, msg_2, encodedResult[0]);
                 })
                     .catch(function (err) {
-                    _this.replyError(handle, msg_2, err);
+                    var errorResponse = (err.stack || err.toString()) + ("\n executing function \"" + msg_2.fcn + "\" of instance \"" + m.instanceId + "\"");
+                    _this.replyError(handle, msg_2, errorResponse);
                 });
             }
             else if (m.cmd === MessageType.SET) {
@@ -320,21 +321,24 @@ var Worker = /** @class */ (function () {
                             _this.reply(handle, msg_3, encodedResult[0]);
                         })
                             .catch(function (err) {
-                            _this.replyError(handle, msg_3, err);
+                            var errorResponse = (err.stack || err.toString()) + ("\n executing callback of instance \"" + m.instanceId + "\"");
+                            _this.replyError(handle, msg_3, errorResponse);
                         });
                     }
                     catch (err) {
-                        this.replyError(handle, msg_3, err);
+                        var errorResponse = (err.stack || err.toString()) + ("\n executing (outer) callback of instance \"" + m.instanceId + "\"");
+                        this.replyError(handle, msg_3, errorResponse);
                     }
                 }
                 else {
-                    this.replyError(handle, msg_3, 'callback "' + msg_3.callbackId + '" not found');
+                    this.replyError(handle, msg_3, "Callback \"" + msg_3.callbackId + "\" not found on instance \"" + m.instanceId + "\"");
                 }
             }
         }
         catch (e) {
-            if (m.cmdId)
-                this.replyError(handle, m, 'Error: ' + e.toString() + e.stack);
+            if (m.cmdId) {
+                this.replyError(handle, m, "Error: " + e.toString() + " " + e.stack + " on instance \"" + m.instanceId + "\"");
+            }
             else
                 this.log('Error: ' + e.toString(), e.stack);
         }
