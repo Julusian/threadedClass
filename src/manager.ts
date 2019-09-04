@@ -36,7 +36,7 @@ export class ThreadedClassManagerClass {
 		return this._internal.getChildrenCount()
 	}
 	public onEvent (proxy: ThreadedClass<any>, event: string, cb: Function) {
-		this._internal.on(event, (child: Child) => {
+		const onEvent = (child: Child) => {
 			let foundChild = Object.keys(child.instances).find((instanceId) => {
 				const instance = child.instances[instanceId]
 				return instance.proxy === proxy
@@ -44,7 +44,13 @@ export class ThreadedClassManagerClass {
 			if (foundChild) {
 				cb()
 			}
-		})
+		}
+		this._internal.on(event, onEvent)
+		return {
+			stop: () => {
+				this._internal.removeListener(event, onEvent)
+			}
+		}
 	}
 	/**
 	 * Restart the thread of the proxy instance
@@ -97,6 +103,9 @@ export interface Child {
 
 	callbackId: number
 	callbacks: {[key: string]: Function}
+}
+export function childName (child: Child) {
+	return `Child_ ${Object.keys(child.instances).join(',')}`
 }
 /**
  * The ChildInstance represents a proxy-instance of a class, running in a child process
@@ -184,7 +193,7 @@ export class ThreadedClassManagerClassInternal extends EventEmitter {
 	): ChildInstance {
 		const instance: ChildInstance = {
 
-			id: 'instance_' + this._instanceId++,
+			id: 'instance_' + this._instanceId++ + (config.instanceName ? '_' + config.instanceName : ''),
 			child: child,
 			proxy: proxy,
 			usage: config.threadUsage,
@@ -255,9 +264,9 @@ export class ThreadedClassManagerClassInternal extends EventEmitter {
 	public sendMessageToChild (instance: ChildInstance, messageConstr: MessageToChildConstr, cb?: any | InstanceCallbackFunction | InstanceCallbackInitFunction) {
 		try {
 
-			if (!instance.child) throw new Error('Instance has been detached from child process')
-			if (!instance.child.alive) throw new Error('Child process has been closed')
-			if (instance.child.isClosing) throw new Error('Child process is closing')
+			if (!instance.child) throw new Error(`Instance ${instance.id} has been detached from child process`)
+			if (!instance.child.alive) throw new Error(`Child process of instance ${instance.id} has been closed`)
+			if (instance.child.isClosing) throw new Error(`Child process of instance ${instance.id} is closing`)
 			const message: MessageToChild = {...messageConstr, ...{
 				cmdId: instance.child.cmdId++,
 				instanceId: instance.id
@@ -266,7 +275,7 @@ export class ThreadedClassManagerClassInternal extends EventEmitter {
 			if (
 				message.cmd !== MessageType.INIT &&
 				!instance.initialized
-			) throw Error('Child instance is not initialized')
+			) throw Error(`Child instance ${instance.id} is not initialized`)
 
 			if (cb) instance.child.queue[message.cmdId + ''] = cb
 			try {
@@ -275,7 +284,7 @@ export class ThreadedClassManagerClassInternal extends EventEmitter {
 						if (instance.child.queue[message.cmdId + '']) {
 							instance.child.queue[message.cmdId + ''](
 								instance,
-								new Error('Error sending message to child process: ' + error)
+								new Error(`Error sending message to child process of instance ${instance.id}: ` + error)
 							)
 							delete instance.child.queue[message.cmdId + '']
 						}
@@ -283,7 +292,7 @@ export class ThreadedClassManagerClassInternal extends EventEmitter {
 				})
 			} catch (e) {
 				if ((e.toString() || '').match(/circular structure/)) { // TypeError: Converting circular structure to JSON
-					throw new Error('Unsupported attribute (circular structure): ' + e.toString())
+					throw new Error(`Unsupported attribute (circular structure) in instance ${instance.id}: ` + e.toString())
 				} else {
 					throw e
 				}
@@ -324,8 +333,8 @@ export class ThreadedClassManagerClassInternal extends EventEmitter {
 			}
 			return false
 		})
-		if (!foundChild) throw Error('Child not found')
-		if (!foundInstance) throw Error('Instance not found')
+		if (!foundChild) throw Error(`Child of proxy not found`)
+		if (!foundInstance) throw Error(`Instance of proxy not found`)
 
 		await this.restartChild(foundChild, [foundInstance], forceRestart)
 	}
@@ -440,7 +449,7 @@ export class ThreadedClassManagerClassInternal extends EventEmitter {
 						!instance.child.isClosing
 					) {
 						// console.log(`Ping failed for Child "${instance.child.id }" of instance "${instance.id}"`)
-						this._childHasCrashed(instance.child, 'Child process ping timeout')
+						this._childHasCrashed(instance.child, `Child process of instance ${instance.id} ping timeout`)
 					}
 				})
 
@@ -577,27 +586,27 @@ export class ThreadedClassManagerClassInternal extends EventEmitter {
 				child.alive = false
 				this.emit('thread_closed', child)
 
-				this._childHasCrashed(child, 'Child process closed')
+				this._childHasCrashed(child, `Child process "${childName(child)}" was closed`)
 			}
 		})
 		child.process.on('error', (err) => {
-			console.log('Error from ' + child.id, err)
+			console.error('Error from child ' + child.id, err)
 		})
 		child.process.on('message', (message: MessageFromChild) => {
 			if (message.cmd === MessageType.LOG) {
-				console.log(...message.log)
+				console.log(message.instanceId, ...message.log)
 			} else {
 				const instance = child.instances[message.instanceId]
 				if (instance) {
 					try {
 						instance.onMessageCallback(instance, message)
 					} catch (e) {
-						console.log('Error in onMessageCallback', message, instance)
-						console.log(e)
+						console.error(`Error in onMessageCallback in instance ${instance.id}`, message, instance)
+						console.error(e)
 						throw e
 					}
 				} else {
-					console.log(`Instance "${message.instanceId}" not found`)
+					console.error(`Instance "${message.instanceId}" not found`)
 				}
 			}
 		})
